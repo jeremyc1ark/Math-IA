@@ -47,8 +47,8 @@ def get_skewed_axis(axis, camera_coords, angle):
     j = camera_coords[axis]
     i = get_distance(camera_coords, origin)
     phi = math.arcsin(j/i)
-    mu = 2 * math.pi - phi
-    psi = 2 * math.pi - mu - theta
+    mu = math.pi - phi
+    psi = math.pi - mu - theta
     m = i * math.sin(theta) / math.sin(psi)
     return m
 
@@ -64,9 +64,7 @@ def get_line_equation(camera_coords, orientation_vec):
         return x * camera_slope + camera_coords
     return eqn
 
-def get_skewed_orientation(horz_skew, vert_skew, orienation_vec, quadrant):
-    # Top left = 1, top right = 2, bottom right = 3, bottom left = 4
-    
+def get_f
 
 # Run until the user asks to quit
 running = True
