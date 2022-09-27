@@ -1,38 +1,38 @@
 package main.tests;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import java.util.Random;
 
-import org.junit.Test;
+import org.apache.commons.math3.linear.ArrayRealVector;
+import org.apache.commons.math3.linear.RealVector;
 import org.junit.jupiter.api.RepeatedTest;
 
-import Jama.Matrix;
 import main.java.Calculations;
-import main.java.Coordinate;
 import main.java.Orientation;
 
 class CalculationsTest {
 	
-	/*
-	 * If 90 degree yaw is applied, the point should be equal to ___
-	 * If 90 degree pitch is applied, the point should be equal to ___
-	 * If 45 degree yaw and pitch are applied, the point should be equal to ___
-	 * If a random rotation is selected and another one is generated based off the original that is orthogonal to it, their dot products should be 0.
-	 * Roll should not affect output
-	 */
+	
+	// HELPERS
 	
 	private double generateRandomAngle () {
 		double radiansInACircle = 2 * Math.PI;
 		return Math.random() * radiansInACircle;
 	}
 	
-	private Coordinate generateRandomCoordinate () {
-		double x = Math.random() * 15 - 10;
-		double y = Math.random() * 15 - 10;
-		double z = Math.random() * 15 - 10;
+	private RealVector generateRandomCoordinate () {
+		double rangeMin = -10.;
+		double rangeMax = 10.;
+		Random r = new Random();
+		double x = rangeMin + (rangeMax - rangeMin) * r.nextDouble();
+		double y = rangeMin + (rangeMax - rangeMin) * r.nextDouble();
+		double z = rangeMin + (rangeMax - rangeMin) * r.nextDouble();
 
-		return new Coordinate (x, y, z);
+		double[] randomCoordinateRealVectorData = {x, y, z};
+		RealVector randomCoordinate =  new ArrayRealVector (randomCoordinateRealVectorData, false);
+		return randomCoordinate;
 	}
 	
 	private Orientation generateRandomOrientation () {
@@ -44,52 +44,34 @@ class CalculationsTest {
 	}
 	
 	
-	private boolean doublesEqualWithinTolerance (double firstDouble, double secondDouble, double tolerance) {
-		return (Math.abs(firstDouble - secondDouble) < tolerance);
-	}
 	
-	private boolean coordinatesAreEqualWithinTolerance (Coordinate firstCoordinate, Coordinate secondCoordinate, double tolerance) {
-		double x1 = firstCoordinate.getX();
-		double y1 = firstCoordinate.getY();
-		double z1 = firstCoordinate.getZ();
-		
-		double x2 = secondCoordinate.getX();
-		double y2 = secondCoordinate.getY();
-		double z2 = secondCoordinate.getZ();
-		
-		return (doublesEqualWithinTolerance(x1, x2, 0.01)
-				&& doublesEqualWithinTolerance(y1, y2, 0.01)
-				&& doublesEqualWithinTolerance(z1, z2, 0.01));
+	
+	// FINDPOINTONLINEOFSIGHT
 
-	}
-	
-	@RepeatedTest(10)
+	@RepeatedTest(100)
 	void findPointOnLineOfSight_noRotationApplied () {
 		Orientation orientation = new Orientation(0., 0., 0.);
-		Coordinate cameraCoords = generateRandomCoordinate();
-		Coordinate point = Calculations.findPointOnLineOfSight(cameraCoords, orientation);
-		double pointZCoordinate = point.getZ();
-		Coordinate shouldBeEqualToCameraCoords = new Coordinate (cameraCoords.getX(), cameraCoords.getY(), pointZCoordinate - 1);
+		RealVector cameraCoords = generateRandomCoordinate();
+		RealVector point = Calculations.findPointOnLineOfSight(cameraCoords, orientation);
+		double[] shouldBeEqualToCameraCoordsVectorData = {point.getEntry(0), point.getEntry(1), point.getEntry(2) - 1};
+		RealVector shouldBeEqualToCameraCoords = new ArrayRealVector (shouldBeEqualToCameraCoordsVectorData, false);
 
-		assertTrue(coordinatesAreEqualWithinTolerance(
-				cameraCoords,
-				shouldBeEqualToCameraCoords,
-				0.01));
+		assertTrue(coordinatesAreEqualWithinTolerance(cameraCoords, shouldBeEqualToCameraCoords));
 	}
 	
-	@RepeatedTest(10)
+	@RepeatedTest(100)
 	void findPointOnLineOfSight_distanceIsOne () {
 		Orientation orientation = generateRandomOrientation();
-		Coordinate cameraCoords = generateRandomCoordinate();
-		Coordinate point = Calculations.findPointOnLineOfSight(cameraCoords, orientation);
+		RealVector cameraCoords = generateRandomCoordinate();
+		RealVector point = Calculations.findPointOnLineOfSight(cameraCoords, orientation);
 
-		Matrix difference = cameraCoords.getCoordinate().minus(point.getCoordinate());
-		double norm = difference.norm1();
+		RealVector difference = cameraCoords.subtract(point);
+		double norm = difference.getL1Norm();
 
-		assertEquals(norm, 1.0, 0.01);
+		assertEquals(norm, 1.0, 0.05);
 	}
 
-	@RepeatedTest(10)
+	@RepeatedTest(100)
 	void findPointOnLineOfSight_rollHasNoEffect () {
 		double pitch = generateRandomAngle();
 		double yaw = generateRandomAngle();
@@ -99,14 +81,14 @@ class CalculationsTest {
 		Orientation orientationOne = new Orientation(pitch, yaw, rollOne);
 		Orientation orientationTwo = new Orientation(pitch, yaw, rollTwo);
 		
-		Coordinate cameraCoords = generateRandomCoordinate();
-		Coordinate pointOne = Calculations.findPointOnLineOfSight(cameraCoords, orientationOne);
-		Coordinate pointTwo = Calculations.findPointOnLineOfSight(cameraCoords, orientationTwo);
+		RealVector cameraCoords = generateRandomCoordinate();
+		RealVector pointOne = Calculations.findPointOnLineOfSight(cameraCoords, orientationOne);
+		RealVector pointTwo = Calculations.findPointOnLineOfSight(cameraCoords, orientationTwo);
 		
-		assertTrue(coordinatesAreEqualWithinTolerance(pointOne, pointTwo, 0.01));
+		assertTrue(coordinatesAreEqualWithinTolerance(pointOne, pointTwo));
 	}
 	
-	@RepeatedTest(10)
+	@RepeatedTest(100)
 	void findPointOnLineOfSight_orientationDeltaPitchIsAccurate () {
 		double quarterRotation = Math.PI / 2;
 		double pitchOne = generateRandomAngle();
@@ -119,12 +101,39 @@ class CalculationsTest {
 		Orientation orientationTwo = new Orientation(pitchTwo, yaw, roll);
 		Orientation orientationThree = new Orientation(pitchThree, yaw, roll);
 		
-		Coordinate cameraCoords = generateRandomCoordinate();
+		RealVector cameraCoords = generateRandomCoordinate();
 		
-		Coordinate pointOne = Calculations.findPointOnLineOfSight(cameraCoords, orientationOne);
-		Coordinate pointTwo = Calculations.findPointOnLineOfSight(cameraCoords, orientationTwo);
-		Coordinate pointThree = Calculations.findPointOnLineOfSight(cameraCoords, orientationThree);
+		RealVector pointOne = Calculations.findPointOnLineOfSight(cameraCoords, orientationOne);
+		RealVector pointTwo = Calculations.findPointOnLineOfSight(cameraCoords, orientationTwo);
+		RealVector pointThree = Calculations.findPointOnLineOfSight(cameraCoords, orientationThree);
 		
-		
+		assertEquals(pointOne.dotProduct(pointTwo), 0., 0.01);
+		assertEquals(pointOne.dotProduct(pointThree), 0., 0.01);
 	}
+	
+	
+	@RepeatedTest(100)
+	void findPointOnLineOfSight_45DegreeOrientationWorks () {
+		double fortyFiveDegreeAngleInRadians = Math.PI / 4;
+		double pitch, yaw;
+		pitch = yaw = fortyFiveDegreeAngleInRadians;
+
+		
+		Orientation orientation = new Orientation(pitch, yaw, 0.);
+		RealVector cameraCoords = generateRandomCoordinate();
+		RealVector point = Calculations.findPointOnLineOfSight(cameraCoords, orientation);
+		RealVector fortyFiveDegreeUnitVector = new ArrayRealVector (3, Math.sqrt(1.0 / 3.0));
+		
+		RealVector difference = point.subtract(cameraCoords);
+		
+		assertTrue(coordinatesAreEqualWithinTolerance(difference, fortyFiveDegreeUnitVector));
+	}
+	
+	// 
 }
+
+
+
+
+
+

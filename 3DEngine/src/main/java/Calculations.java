@@ -9,15 +9,12 @@ package main.java;
 
 import java.awt.Frame;
 import java.lang.reflect.Method;
+import java.util.function.Function;
 
-import org.la4j.Matrix;
-import org.la4j.matrix.DenseMatrix;
-import org.la4j.matrix.dense.Basic2DMatrix;
-import org.la4j.operation.MatrixVectorOperation;
-import org.la4j.operation.ooplace.OoPlaceMatrixByVectorMultiplication;
-import org.la4j.vector.DenseVector;
-import org.la4j.vector.SparseVector;
-import org.la4j.vector.dense.BasicVector;
+import org.apache.commons.math3.linear.ArrayRealVector;
+import org.apache.commons.math3.linear.MatrixUtils;
+import org.apache.commons.math3.linear.RealMatrix;
+import org.apache.commons.math3.linear.RealVector;
 
 public final class Calculations {
 	
@@ -33,27 +30,29 @@ public final class Calculations {
 	 * @param orientation the orientation of the camera.
 	 * @return a point on the camera's line of sight that has a distance of 1 from the coordinates of the camera.
 	 */
-	public static SparseVector findPointOnLineOfSight (SparseVector cameraCoords, Orientation orientation) {
+	public static RealVector findPointOnLineOfSight (RealVector cameraCoords, Orientation orientation) {
 		double yaw = orientation.getYaw();
 		double pitch = orientation.getPitch();
-		double[][] yawRotationArray = {
+		double[][] yawRotationMatrixData = {
 				{Math.cos(yaw), 0., Math.sin(yaw) * -1},
 				{0., 1., 0.},
 				{Math.sin(yaw), 0., Math.cos(yaw)}
 		};
-		double[][] pitchRotationArray = {
+		double[][] pitchRotationMatrixData = {
 				{1., 0., 0.},
 				{0., Math.cos(pitch), Math.sin(pitch) * -1},
 				{0., Math.sin(pitch), Math.cos(pitch)}
 		};
 
-		DenseMatrix yawRotationMatrix = new Basic2DMatrix(yawRotationArray);
-		DenseMatrix pitchRotationMatrix = new Basic2DMatrix(pitchRotationArray);
-		double[] unitVecAsDoubleList = {0., 0., 1.};
-		DenseVector unrotatedUnitVec = new BasicVector(unitVecAsDoubleList);
-		Matrix pointOnLineOfSightInMatrixForm = MatrixVectorOperation.OoPlaceMatrixByVectorMultiplication(yawRotationMatrix, unrotatedUnitVec);
-				
-		Coordinate pointOnLineOfSight = new Coordinate(pointOnLineOfSightInMatrixForm);
+		RealMatrix yawRotationMatrix = MatrixUtils.createRealMatrix(yawRotationMatrixData);
+		RealMatrix pitchRotationMatrix = MatrixUtils.createRealMatrix(pitchRotationMatrixData);
+		double[] unrotatedUnitVecData = {0., 0., 1.};
+		RealVector unrotatedUnitVec = new ArrayRealVector(unrotatedUnitVecData, false);
+		
+		// The line below is basically equivalent to:
+		// unrotatedUnitVec * pitchRotationMatrix * yawRotationMatrix + cameraCoords
+		RealVector pointOnLineOfSight = yawRotationMatrix.operate(pitchRotationMatrix.operate(unrotatedUnitVec)).add(cameraCoords);
+		
 		return pointOnLineOfSight;
 	}
 
@@ -67,10 +66,10 @@ public final class Calculations {
 	 * @param cameraCoords the coordinates of the camera
 	 * @return a unit vector that is parallel to the camera's line of sight
 	 */
-	public static Coordinate findLineOfSightUnitVec (Coordinate pointOnLineOfSight, Coordinate cameraCoords) {
-		return;
+	public static RealVector findLineOfSightUnitVec (RealVector pointOnLineOfSight, RealVector cameraCoords) {
+		RealVector unitVec = pointOnLineOfSight.subtract(cameraCoords);
+		return unitVec;
 	}
-
 	/*
 	 * This method returns a method that, given some distance along the camera's line of sight, returns
 	 * the coordinates corresponding to that distance.
@@ -80,8 +79,8 @@ public final class Calculations {
 	 * and on the camera's line of sight.
 	 * @return a method for the camera's line of sight.
 	 */
-	public static Method lineOfSightGenerator (Coordinate cameraCoords, Coordinate pointOnLineOfSight) {
-		return;
+	public static RealVector lineOfSight (double a, RealVector cameraCoords, RealVector lineOfSightUnitVec) {
+		return lineOfSightUnitVec.mapMultiply(a).add(cameraCoords);
 	}
 
 	/*
@@ -97,8 +96,8 @@ public final class Calculations {
 	 * @return an 'a' value such that cam(a) produces a point that can share a plane that is orthogonal to the
 	 * camera's line of sight with the target point.
 	 */
-	public static double getA (Coordinate camCoords, Coordinate targetPoint, Coordinate pointOnLineOfSight) {
-		return;
+	public static double getA (RealVector camCoords, RealVector targetPoint, RealVector unitVector) {
+		return (targetPoint.dotProduct(unitVector) - camCoords.getEntry(0) - camCoords.getL1Norm()) / unitVector.getL1Norm();
 	}
 	
 	/*
@@ -114,8 +113,8 @@ public final class Calculations {
 	 * @param aspectRatio an object containing the width and height of the canvas in pixels
 	 * @return the distance from the center of the frame to the corners at this particular `a` value
 	 */
-	public static double distanceFromTheCenterOfTheFrameToTheCorners (double a, AspectRatio aspectRatio) {
-		return;
+	public static double distanceFromTheCenterOfTheFrameToTheCorners (double a, double divergenceAngle) {
+		return a * Math.tan(divergenceAngle);
 	}
 	
 	/*
@@ -124,21 +123,36 @@ public final class Calculations {
 	 * 
 	 * @param a the distance between the center of the circle and the camera
 	 * @param firstOrthogonalUnitVector a unit vector that is orthogonal to the camera's line of sight
-	 * @param secondOrthogonalUnitVector a unit vecot that is orthogonal to the camera's line of sight
+	 * @param secondOrthogonalUnitVector a unit vector is orthogonal to the camera's line of sight
 	 * and the `firstOrthogonalUnitVector` 
 	 * @param lineOfSight the camera's line of sight
 	 * @param distanceToFrameCorners the radius of the circle
 	 * @return a function for a circle that contains all of the frame points a 3D frame at a given distance
 	 * away from the camera.
 	 */
-	public static Method circleGenerator (
+	public static Function<Double, RealVector> circleGenerator
+	(
 			double a,
-			Coordinate firstOrthogonalUnitVector,
-			Coordinate secondOrthogonalUnitVector,
-			Method lineOfSight,
-			double distanceToFrameCorners
-			) {
-		return;
+			RealVector firstOrthogonalUnitVector,
+			RealVector secondOrthogonalUnitVector,
+			RealVector cameraCoords,
+			RealVector lineOfSightUnitVec,
+			double radius
+	)
+	{
+		
+		return (circleAngle) -> {
+			RealVector centerOfCircle = lineOfSight(a, cameraCoords, lineOfSightUnitVec);
+			
+			RealVector circleAxisOne = firstOrthogonalUnitVector.mapMultiply(Math.sin(circleAngle));
+			RealVector circleAxisTwo = secondOrthogonalUnitVector.mapMultiply(Math.cos(circleAngle));
+			
+			RealVector unitCircle = circleAxisOne.add(circleAxisTwo);
+			RealVector scaledCircle = unitCircle.mapMultiply(radius);
+			RealVector translatedCircle = scaledCircle.add(centerOfCircle);
+
+			return translatedCircle;
+		};
 	}
 	
 	/*
@@ -153,8 +167,27 @@ public final class Calculations {
 	 * the circle that is parallel to the plane formed by the XZ axes, and which, when viewed from the perspective
 	 * of the camera, is to the right of the center of the circle.
 	 */
-	public static double getInitialCircleAngleInRadians (Coordinate firstOrthogonalUnitVector, Coordinate secondOrthogonalUnitVector) {
-		return;
+	public static double getInitialCircleAngleInRadians
+	(
+			RealVector firstOrthogonalUnitVector,
+			RealVector secondOrthogonalUnitVector,
+			Function<Double, RealVector> circle
+	)
+	{
+		double optionOneInRadians = Math.atan(-1.0 * secondOrthogonalUnitVector.getEntry(1) / firstOrthogonalUnitVector.getEntry(1));
+		double optionTwoInRadians = optionOneInRadians + Math.PI;
+
+		double epsilon = 0.1;
+		
+		boolean optionOneIsOnTheRightHandSideOfTheFrame = (
+				circle.apply(optionOneInRadians - epsilon).getEntry(1) < circle.apply(optionOneInRadians).getEntry(1)
+				&& circle.apply(optionOneInRadians).getEntry(1) < circle.apply(optionOneInRadians + epsilon).getEntry(1)
+				);
+		
+		if (optionOneIsOnTheRightHandSideOfTheFrame)
+			return optionOneInRadians;
+		else
+			return optionTwoInRadians;
 	}
 	
 	
@@ -220,7 +253,7 @@ public final class Calculations {
 	 * @param frame the frame of the camera in 3D
 	 * @return the 3D vector representing the X-axis of the 2D canvas
 	 */
-	public static Coordinate get3DXAxis (Frame frame) {
+	public static RealVector get3DXAxis (Frame frame) {
 		return;
 	}
 
@@ -230,7 +263,7 @@ public final class Calculations {
 	 * @param frame the frame of the camera in 3D
 	 * @return the 3D vector representing the Y-axis of the 2D canvas
 	 */
-	public static Coordinate get3DYAxis (Frame frame) {
+	public static RealVector get3DYAxis (Frame frame) {
 		return;
 	}
 	
@@ -242,7 +275,7 @@ public final class Calculations {
 	 * @return a vector representing what the target point would be if the bottom left corner of the frame became
 	 * the origin of the 3D space
 	 */
-	public static Coordinate getPointRelativeToBottomLeftOfFrame (Coordinate targetPoint, Frame frame) {
+	public static RealVector getPointRelativeToBottomLeftOfFrame (RealVector targetPoint, Frame frame) {
 		return;
 	}
 	
@@ -257,7 +290,7 @@ public final class Calculations {
 	 * @param pointRelativeToBottomLeftOfFrame the target point relative to the bottom left of the frame.
 	 * @return the projection of the point relative to the bottom left of the frame onto one of the axes.
 	 */
-	public static double axisProjection (Coordinate axis, Coordinate pointRelativeToBottomLeftOfFrame) {
+	public static double axisProjection (RealVector axis, RealVector pointRelativeToBottomLeftOfFrame) {
 		return;
 	}
 	
@@ -268,7 +301,7 @@ public final class Calculations {
 	 * @param axis a vector representing one of the 2D axes.
 	 * @return the ratio between the magnitude of an axis and the projection of the target point onto that axis.
 	 */
-	public static double getRatioBetweenAxisMagnitudeAndPointProjection (Coordinate pointRelativeToBottomLeftOfFrame, Coordinate axis) {
+	public static double getRatioBetweenAxisMagnitudeAndPointProjection (RealVector pointRelativeToBottomLeftOfFrame, RealVector axis) {
 		return;
 	}
 	
@@ -281,7 +314,7 @@ public final class Calculations {
 	 * @param axis a character representing which axis we are on
 	 * @return the number of pixels up the axis the point should be
 	 */
-	public static int getAxisCoordinateInPixels (AspectRatio aspectRatio, double ratio, char axis) {
+	public static int getAxisRealVectorInPixels (AspectRatio aspectRatio, double ratio, char axis) {
 		return;
 	}
 	
@@ -294,7 +327,7 @@ public final class Calculations {
 	 * @return a 2-element list of integers representing the X and Y coordinates, in pixels, of the target
 	 * point on the 2D canvas
 	 */
-	public static int[] convert3DCoordinateTo2DCoordinate (Camera camera, Coordinate targetPoint) {
+	public static int[] convert3DRealVectorTo2DRealVector (Camera camera, RealVector targetPoint) {
 		return;
 	}
 }
